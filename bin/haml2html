@@ -1,0 +1,48 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+$LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
+
+require "optparse"
+require "haml2html"
+
+options = {}
+
+parser = OptionParser.new do |opts|
+  opts.banner = "Usage: haml2html [options] [INPUT] [OUTPUT]"
+  opts.on("-s", "--stdin", "Read input from standard input") { options[:stdin] = true }
+  opts.on("-h", "--help", "Show this message") do
+    puts opts
+    exit
+  end
+  opts.on("-v", "--version", "Print version") do
+    puts Haml2html::VERSION
+    exit
+  end
+end
+
+parser.parse!
+
+begin
+  input_path, output_path = ARGV
+
+  if options[:stdin]
+    source = STDIN.read
+  elsif input_path
+    source = File.read(input_path)
+  else
+    warn parser
+    exit 1
+  end
+
+  result = Haml2html::Converter.new(source, filename: input_path).render
+
+  if output_path
+    File.write(output_path, result)
+  else
+    print result
+  end
+rescue Haml2html::ConversionError => error
+  warn error.message
+  exit 2
+end
