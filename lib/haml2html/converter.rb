@@ -251,7 +251,7 @@ module Haml2html
     end
 
     def unsupported(node, feature, message)
-      diagnostics << Diagnostic.new(@filename, node.line, feature.to_s, message)
+      diagnostics << Diagnostic.new(filename: @filename, line: node.line, feature: feature.to_s, message: message)
     end
 
     def raw_script_line?(node)
