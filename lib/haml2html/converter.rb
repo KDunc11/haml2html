@@ -8,7 +8,7 @@ require_relative "diagnostic"
 module Haml2html
   class Converter
     VOID_TAGS = %w[area base br col embed hr img input link meta param source track wbr].freeze
-    SUPPORTED_FILTERS = %w[plain escaped javascript css erb].freeze
+    SUPPORTED_FILTERS = %w[plain escaped javascript css erb ruby].freeze
 
     attr_reader :diagnostics
 
@@ -113,7 +113,14 @@ module Haml2html
       end
 
       marker = raw_script_line?(node) ? "<%==" : "<%="
-      "#{spaces(indent)}#{marker} #{code} %>\n"
+      if node.children.any?
+        output = +"#{spaces(indent)}#{marker} #{code} %>\n"
+        output << emit_children(node.children, indent + 1)
+        output << "#{spaces(indent)}<% end %>\n" if closes_with_end?(node)
+        output
+      else
+        "#{spaces(indent)}#{marker} #{code} %>\n"
+      end
     end
 
     def emit_silent_script(node, indent)
@@ -164,6 +171,8 @@ module Haml2html
         "#{spaces(indent)}<style>\n#{indent_block(text, indent + 1)}#{spaces(indent)}</style>\n"
       when "erb"
         indent_block(text, indent)
+      when "ruby"
+        "#{spaces(indent)}<%\n#{indent_block(text, indent)}#{spaces(indent)}%>\n"
       end
     end
 

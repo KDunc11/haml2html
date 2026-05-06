@@ -23,6 +23,14 @@ class ConverterTest < Minitest::Test
     assert_equal "<%= user.name %>\n", convert("= user.name\n")
   end
 
+  def test_script_block
+    assert_equal <<~ERB, convert("= form_with model: user do |f|\n  = f.text_field :name\n")
+      <%= form_with model: user do |f| %>
+        <%= f.text_field :name %>
+      <% end %>
+    ERB
+  end
+
   def test_raw_script
     assert_equal "<%== html %>\n", convert("!= html\n")
   end
@@ -41,6 +49,29 @@ class ConverterTest < Minitest::Test
 
   def test_common_filters
     assert_equal "hi\n<script>\n  alert(1)\n</script>\n", convert(":plain\n  hi\n:javascript\n  alert(1)\n")
+  end
+
+  def test_ruby_filter
+    assert_equal <<~ERB, convert(":ruby\n  count = 1\n  name = \"Kyle\"\n%p= name\n")
+      <%
+      count = 1
+      name = "Kyle"
+      %>
+      <p><%= name %></p>
+    ERB
+  end
+
+  def test_multiline_ruby_filter
+    assert_equal <<~ERB, convert(":ruby\n  if enabled\n    value = \"yes\"\n  else\n    value = \"no\"\n  end\n%p= value\n")
+      <%
+      if enabled
+        value = "yes"
+      else
+        value = "no"
+      end
+      %>
+      <p><%= value %></p>
+    ERB
   end
 
   def test_unknown_filter_diagnostic
