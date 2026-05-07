@@ -80,8 +80,7 @@ class RenderEquivalenceTest < Minitest::Test
 
   def assert_herb_parseable(erb)
     result = Herb.parse(erb)
-    errors = result.respond_to?(:errors) ? result.errors : []
-    assert_empty errors, "Herb parse errors for generated ERB:\n#{errors.join("\n")}\n\n#{erb}"
+    assert_empty result.errors, "Herb parse errors for generated ERB:\n#{result.errors.join("\n")}\n\n#{erb}"
   end
 
   def render_haml(source, locals)

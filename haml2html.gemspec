@@ -9,7 +9,7 @@ Gem::Specification.new do |gem|
   gem.description = "A Haml-to-ERB migration tool for Rails templates."
   gem.homepage = "https://github.com/KDunc11/haml2html"
   gem.license = "MIT"
-  gem.required_ruby_version = ">= 3.1"
+  gem.required_ruby_version = ">= 3.2"
   gem.metadata = {
     "homepage_uri" => gem.homepage,
     "source_code_uri" => "#{gem.homepage}/tree/main",
