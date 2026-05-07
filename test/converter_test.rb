@@ -35,6 +35,14 @@ class ConverterTest < Minitest::Test
     assert_equal "<%== html %>\n", convert("!= html\n")
   end
 
+  def test_inline_raw_script
+    assert_equal "<p><%== html %></p>\n", convert("%p!= html\n")
+  end
+
+  def test_ruby_not_equal_expression_is_not_raw_script
+    assert_equal "<%= html != \"\" ? html : \"\" %>\n", convert("= html != \"\" ? html : \"\"\n")
+  end
+
   def test_silent_script_block
     assert_equal "<% if ok %>\n  Yes\n<% end %>\n", convert("- if ok\n  Yes\n")
   end
@@ -79,11 +87,17 @@ class ConverterTest < Minitest::Test
     assert_includes error.message, "inline.haml:1: filter :markdown: unsupported filter"
   end
 
-  def test_dynamic_attribute_fallback
-    assert_includes convert("%p{class: css_class} Hi\n"), "Haml::AttributeBuilder.build"
+  def test_dynamic_attributes_use_rails_tag_attributes
+    erb = convert("%p{class: css_class} Hi\n")
+
+    assert_includes erb, "tag.attributes(**{class: css_class})"
+    refute_includes erb, "Haml::AttributeBuilder"
+    refute_includes erb, "require \"haml\""
   end
 
-  def test_object_ref_fallback
-    assert_includes convert("%div[user]\n"), "Haml::AttributeBuilder.build"
+  def test_object_ref_diagnostic
+    error = assert_raises(Haml2html::ConversionError) { convert("%div[user]\n") }
+
+    assert_includes error.message, "inline.haml:1: object reference: object references cannot be faithfully converted to inline attrs"
   end
 end

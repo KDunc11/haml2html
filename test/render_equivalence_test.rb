@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "action_view"
+require "herb"
 require "nokogiri"
 require "tmpdir"
 require_relative "test_helper"
@@ -8,6 +9,10 @@ require_relative "test_helper"
 class RenderEquivalenceTest < Minitest::Test
   def test_rails_escaped_output_equivalence
     assert_render_equivalent("%p= name\n", name: "<Kyle>")
+  end
+
+  def test_ruby_not_equal_expression_stays_escaped
+    assert_render_equivalent("= html != \"\" ? html : \"\"\n", html: "<b>x</b>")
   end
 
   def test_nested_markup_equivalence
@@ -33,8 +38,12 @@ class RenderEquivalenceTest < Minitest::Test
     HAML
   end
 
-  def test_object_ref_equivalence
-    assert_render_equivalent("%div[user]\n", user: User.new(7))
+  def test_object_ref_is_unsupported
+    error = assert_raises(Haml2html::ConversionError) do
+      Haml2html::Converter.new("%div[user]\n", filename: "fixture.html.haml").render
+    end
+
+    assert_includes error.message, "fixture.html.haml:1: object reference"
   end
 
   def test_loud_script_block_renders_in_action_view
@@ -43,6 +52,7 @@ class RenderEquivalenceTest < Minitest::Test
         %span= item
     HAML
 
+    assert_herb_parseable(erb)
     output = render_erb(erb, items: ["One", "Two"])
     assert_includes output, "&lt;span&gt;One&lt;/span&gt;"
     assert_includes output, "&lt;span&gt;Two&lt;/span&gt;"
@@ -62,11 +72,16 @@ class RenderEquivalenceTest < Minitest::Test
 
   private
 
-  User = Struct.new(:id)
-
   def assert_render_equivalent(haml, locals = {})
     erb = Haml2html::Converter.new(haml, filename: "fixture.html.haml").render
+    assert_herb_parseable(erb)
     assert_equal normalize_html(render_haml(haml, locals)), normalize_html(render_erb(erb, locals))
+  end
+
+  def assert_herb_parseable(erb)
+    result = Herb.parse(erb)
+    errors = result.respond_to?(:errors) ? result.errors : []
+    assert_empty errors, "Herb parse errors for generated ERB:\n#{errors.join("\n")}\n\n#{erb}"
   end
 
   def render_haml(source, locals)

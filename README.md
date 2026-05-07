@@ -31,26 +31,58 @@ require "haml2html"
 erb = Haml2html::Converter.new("%p= post.title\n", filename: "show.html.haml").render
 ```
 
+## Examples
+
+Haml:
+
+```haml
+= form_with model: post do |form|
+  = form.text_field :title
+```
+
+ERB:
+
+```erb
+<%= form_with model: post do |form| %>
+  <%= form.text_field :title %>
+<% end %>
+```
+
+Haml:
+
+```haml
+:ruby
+  if published
+    status = "Published"
+  else
+    status = "Draft"
+  end
+%p= status
+```
+
+ERB:
+
+```erb
+<%
+if published
+  status = "Published"
+else
+  status = "Draft"
+end
+%>
+<p><%= status %></p>
+```
+
 ## Supported
 
 - Haml tags, nesting, static attributes, text, interpolation.
 - Ruby output and control flow: `=`, `!=`, `- if`, `- each do`, and similar blocks.
 - Public comments and silent comments.
-- `:plain`, `:escaped`, `:javascript`, `:css`, and `:erb` filters.
-- Dynamic Haml attributes and object references through `Haml::AttributeBuilder`.
-
-Generated ERB may call `Haml::AttributeBuilder` for dynamic attributes and object references. Keep `haml` available at runtime until those converted templates are simplified.
+- `:plain`, `:escaped`, `:javascript`, `:css`, `:erb`, and `:ruby` filters.
+- Dynamic Haml attributes through Rails `tag.attributes`.
 
 ## Limitations
 
 This is a migration tool, not a full source-preserving formatter. Output whitespace and quote style may differ from Haml output, while rendered HTML should remain equivalent for supported constructs. Unsupported filters or nodes fail with diagnostics instead of emitting known-wrong ERB.
 
-Batch directory conversion is planned after the single-file converter is stable.
-
-## Publishing Checklist
-
-1. Verify gemspec URLs match the final repository URL.
-2. Run `rake test`.
-3. Run `gem build haml2html.gemspec --strict`.
-4. Inspect package contents with `gem spec haml2html-0.1.0.gem files`.
-5. Publish with RubyGems MFA enabled.
+Object references such as `%div[user]` are not converted yet.

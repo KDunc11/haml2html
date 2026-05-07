@@ -88,7 +88,7 @@ module Haml2html
       return nil if value[:parse].nil? && blank?(value[:value])
 
       if value[:parse]
-        marker = raw_script_line?(node) ? "<%==" : "<%="
+        marker = raw_script?(node) ? "<%==" : "<%="
         raw = "#{marker} #{value[:value].to_s.strip} %>"
         value[:preserve_script] ? raw : raw
       else
@@ -98,12 +98,13 @@ module Haml2html
 
     def emit_attributes(node)
       value = node.value
-      return runtime_attributes(value) if runtime_attributes?(value)
+      attrs = static_attributes(value)
+      diagnose_object_ref(node, value)
 
-      attrs = value[:attributes].sort.map do |name, attr_value|
-        %( #{name}="#{escape_attr(interpolate_text(attr_value.to_s))}")
-      end
-      attrs.join
+      dynamic = dynamic_attributes_expression(value[:dynamic_attributes])
+      return attrs unless dynamic
+
+      "#{attrs}#{dynamic_attributes(dynamic)}"
     end
 
     def emit_script(node, indent)
@@ -112,7 +113,7 @@ module Haml2html
         return "#{spaces(indent)}#{interpolate_text(unquote_string_literal(code))}\n"
       end
 
-      marker = raw_script_line?(node) ? "<%==" : "<%="
+      marker = raw_script?(node) ? "<%==" : "<%="
       if node.children.any?
         output = +"#{spaces(indent)}#{marker} #{code} %>\n"
         output << emit_children(node.children, indent + 1)
@@ -176,40 +177,24 @@ module Haml2html
       end
     end
 
-    def runtime_attributes?(value)
-      object_ref = value[:object_ref]
-      return true unless object_ref.nil? || object_ref == :nil
-
-      dynamic = value[:dynamic_attributes]
-      return false unless dynamic
-
-      dynamic_literals(dynamic).any?
+    def static_attributes(value)
+      value[:attributes].sort.map do |name, attr_value|
+        %( #{name}="#{escape_attr(interpolate_text(attr_value.to_s))}")
+      end.join
     end
 
-    def runtime_attributes(value)
-      args = ["true", '"\\"".freeze', ":html", object_ref_literal(value[:object_ref])]
-      args << value[:attributes].inspect unless value[:attributes].empty?
-      args.concat(dynamic_literals(value[:dynamic_attributes]))
-
-      %(<%== (require "haml"; ::Haml::AttributeBuilder.build(#{args.join(", ")})) %>)
+    def dynamic_attributes(dynamic)
+      %(<%== tag.attributes(**#{dynamic}).then { |attrs| attrs.empty? ? "" : " \#{attrs}" } %>)
     end
 
-    def object_ref_literal(object_ref)
-      return "nil" if object_ref.nil? || object_ref == :nil
+    def dynamic_attributes_expression(dynamic)
+      return nil unless dynamic
 
-      object_ref
-    end
+      expressions = [dynamic.new, dynamic.old].compact
+      return nil if expressions.empty?
+      return expressions.first if expressions.one?
 
-    def dynamic_literals(dynamic)
-      return [] unless dynamic
-
-      [dynamic.new, stripped_old_dynamic_literal(dynamic.old)].compact
-    end
-
-    def stripped_old_dynamic_literal(old)
-      return nil if old.nil?
-
-      old.dup.sub(/\A{/, "").sub(/}\z/m, "")
+      expressions.reduce("{}") { |merged, expression| "#{merged}.merge(#{expression})" }
     end
 
     def diagnose_object_ref(node, value)
@@ -217,19 +202,6 @@ module Haml2html
       return if object_ref.nil? || object_ref == :nil
 
       unsupported(node, "object reference", "object references cannot be faithfully converted to inline attrs")
-    end
-
-    def diagnose_dynamic_attributes(node, value)
-      dynamic = value[:dynamic_attributes]
-      return unless dynamic
-
-      if dynamic.respond_to?(:new) && dynamic.new
-        unsupported(node, "dynamic attributes", "new-style dynamic attributes are not supported")
-      end
-
-      if dynamic.respond_to?(:old) && dynamic.old
-        unsupported(node, "dynamic attributes", "old-style dynamic attributes are not supported")
-      end
     end
 
     def closes_with_end?(node)
@@ -263,9 +235,11 @@ module Haml2html
       diagnostics << Diagnostic.new(filename: @filename, line: node.line, feature: feature.to_s, message: message)
     end
 
-    def raw_script_line?(node)
+    def raw_script?(node)
+      return true if node.type == :tag && node.value[:preserve_script] == false
+
       line = @lines.fetch(node.line.to_i - 1, "")
-      line.lstrip.start_with?("!=") || line.include?("!=")
+      line.lstrip.start_with?("!=")
     end
 
     def blank?(value)
