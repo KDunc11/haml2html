@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3
+
+- Fix generated ERB for Haml attributes with mixed static and dynamic classes.
+
 ## 0.1.2
 
 - Raise the minimum supported Ruby version to 3.2.
