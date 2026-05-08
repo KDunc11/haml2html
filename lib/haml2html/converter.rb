@@ -2,6 +2,7 @@
 
 require "cgi"
 require "haml"
+require "ripper"
 
 require_relative "diagnostic"
 
@@ -79,6 +80,7 @@ module Haml2html
       if node.children.empty? && !blank?(inline)
         return "#{open}#{inline}#{close}\n"
       end
+      return "#{open}#{close}\n" if node.children.empty?
 
       "#{open}\n#{emit_children(node.children, indent + 1)}#{spaces(indent)}#{close}\n"
     end
@@ -98,13 +100,18 @@ module Haml2html
 
     def emit_attributes(node)
       value = node.value
-      attrs = static_attributes(value)
+      attrs = value[:attributes].dup
       diagnose_object_ref(node, value)
 
       dynamic = dynamic_attributes_expression(value[:dynamic_attributes])
-      return attrs unless dynamic
+      return static_attributes(attrs) unless dynamic
 
-      "#{attrs}#{dynamic_attributes(dynamic)}"
+      if (simple_attrs = simple_dynamic_attributes(dynamic))
+        dynamic_class = simple_attrs.delete("class")
+        return "#{static_attributes(attrs, dynamic_class: dynamic_class)}#{simple_attrs.map { |name, attr_value| dynamic_attribute(name, attr_value) }.join}"
+      end
+
+      "#{static_attributes(attrs)}#{dynamic_attributes(dynamic)}"
     end
 
     def emit_script(node, indent)
@@ -177,14 +184,61 @@ module Haml2html
       end
     end
 
-    def static_attributes(value)
-      value[:attributes].sort.map do |name, attr_value|
-        %( #{name}="#{escape_attr(interpolate_text(attr_value.to_s))}")
+    def static_attributes(attrs, dynamic_class: nil)
+      emitted_attrs = attrs.dup
+      emitted_attrs["class"] = "" if dynamic_class && !emitted_attrs.key?("class")
+
+      emitted_attrs.sort.map do |name, attr_value|
+        value = escape_attr(interpolate_text(attr_value.to_s))
+        value = value.empty? ? dynamic_class : "#{value} #{dynamic_class}" if name == "class" && dynamic_class
+        %( #{name}="#{value}")
       end.join
     end
 
     def dynamic_attributes(dynamic)
-      %(<%== tag.attributes(**#{dynamic}).then { |attrs| attrs.empty? ? "" : " \#{attrs}" } %>)
+      %(<%== (_haml2html_attrs = tag.attributes(**#{dynamic})).empty? ? "" : " \#{_haml2html_attrs}" %>)
+    end
+
+    def dynamic_attribute(name, value)
+      %( #{name}="#{value}")
+    end
+
+    def simple_dynamic_attributes(dynamic)
+      program = Ripper.sexp(dynamic)
+      hash = program&.dig(1, 0)
+      return nil unless hash&.first == :hash
+
+      associations = hash.dig(1, 1)
+      return nil unless associations.is_a?(Array)
+
+      associations.each_with_object({}) do |association, attrs|
+        return nil unless association&.first == :assoc_new
+
+        label = association[1]
+        return nil unless label&.first == :@label
+
+        value = simple_dynamic_attribute_value(association[2])
+        return nil unless value
+
+        attrs[label[1].delete_suffix(":")] = value
+      end
+    end
+
+    def simple_dynamic_attribute_value(node)
+      case node&.first
+      when :string_literal
+        escape_attr(string_literal_content(node))
+      when :vcall
+        ident = node.dig(1, 1)
+        return nil unless ident
+
+        "<%= #{ident} %>"
+      end
+    end
+
+    def string_literal_content(node)
+      content = node.dig(1, 1, 1)
+      content.to_s
     end
 
     def dynamic_attributes_expression(dynamic)

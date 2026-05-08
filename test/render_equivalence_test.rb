@@ -38,6 +38,12 @@ class RenderEquivalenceTest < Minitest::Test
     HAML
   end
 
+  def test_static_and_dynamic_class_attribute_equivalence
+    assert_render_equivalent(<<~HAML, selectors: "is-open")
+      .accordion__header{ type: "button", class: selectors }
+    HAML
+  end
+
   def test_object_ref_is_unsupported
     error = assert_raises(Haml2html::ConversionError) do
       Haml2html::Converter.new("%div[user]\n", filename: "fixture.html.haml").render

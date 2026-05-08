@@ -87,12 +87,24 @@ class ConverterTest < Minitest::Test
     assert_includes error.message, "inline.haml:1: filter :markdown: unsupported filter"
   end
 
-  def test_dynamic_attributes_use_rails_tag_attributes
+  def test_simple_dynamic_class_attribute
     erb = convert("%p{class: css_class} Hi\n")
 
-    assert_includes erb, "tag.attributes(**{class: css_class})"
+    assert_equal "<p class=\"<%= css_class %>\">Hi</p>\n", erb
     refute_includes erb, "Haml::AttributeBuilder"
     refute_includes erb, "require \"haml\""
+  end
+
+  def test_dynamic_class_merges_with_static_class
+    assert_equal "<div class=\"accordion__header <%= selectors %>\" type=\"button\"></div>\n",
+                 convert(".accordion__header{ type: \"button\", class: selectors }\n")
+  end
+
+  def test_complex_dynamic_attributes_use_rails_tag_attributes
+    erb = convert("%button{class: [\"btn\", css_class], data: {controller: :menu}, disabled: !enabled} Save\n")
+
+    assert_includes erb, "tag.attributes(**{class: [\"btn\", css_class], data: {controller: :menu}, disabled: !enabled})"
+    refute_includes erb, ".then"
   end
 
   def test_object_ref_diagnostic
