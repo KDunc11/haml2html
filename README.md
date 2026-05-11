@@ -51,6 +51,29 @@ ERB:
 Haml:
 
 ```haml
+= render(SplitDropdownComponent.new) do |component|
+  - component.with_button do
+    = render(Button::IconComponent.new(...))
+  - component.with_menu do
+    = menu
+```
+
+ERB:
+
+```erb
+<%= render(SplitDropdownComponent.new) do |component| %>
+  <% component.with_button do %>
+    <%= render(Button::IconComponent.new(...)) %>
+  <% end %>
+  <% component.with_menu do %>
+    <%= menu %>
+  <% end %>
+<% end %>
+```
+
+Haml:
+
+```haml
 :ruby
   if published
     status = "Published"
@@ -77,6 +100,7 @@ end
 
 - Haml tags, nesting, static attributes, text, interpolation.
 - Ruby output and control flow: `=`, `!=`, `- if`, `- each do`, and similar blocks.
+- Yield-based Ruby block DSLs, such as ViewComponent slots and Rails form builders.
 - Public comments and silent comments.
 - `:plain`, `:escaped`, `:javascript`, `:css`, `:erb`, and `:ruby` filters.
 - Literal dynamic Haml attribute hashes, including simple `class`, `data`, `aria`, and boolean attributes.

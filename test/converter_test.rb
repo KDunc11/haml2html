@@ -31,6 +31,29 @@ class ConverterTest < Minitest::Test
     ERB
   end
 
+  def test_yield_based_ruby_block_dsl
+    haml = <<~HAML
+      = render(SplitDropdownComponent.new) do |c|
+        - c.with_button do
+          = render(Button::IconComponent.new)
+        - c.with_menu do
+          = menu
+    HAML
+
+    erb = <<~ERB
+      <%= render(SplitDropdownComponent.new) do |c| %>
+        <% c.with_button do %>
+          <%= render(Button::IconComponent.new) %>
+        <% end %>
+        <% c.with_menu do %>
+          <%= menu %>
+        <% end %>
+      <% end %>
+    ERB
+
+    assert_equal erb, convert(haml)
+  end
+
   def test_raw_script
     assert_equal "<%== html %>\n", convert("!= html\n")
   end
