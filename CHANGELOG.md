@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.4
+
+- Remove the `tag.attributes` fallback and emit literal dynamic attributes directly.
+
 ## 0.1.3
 
 - Fix generated ERB for Haml attributes with mixed static and dynamic classes.
