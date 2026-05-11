@@ -36,11 +36,21 @@ class RenderEquivalenceTest < Minitest::Test
     assert_render_equivalent(<<~HAML, css_class: "active", enabled: true)
       %button{class: ["btn", css_class], data: {controller: :menu}, disabled: !enabled} Save
     HAML
+
+    assert_render_equivalent(<<~HAML, css_class: "active", enabled: false)
+      %button{class: ["btn", css_class], data: {controller: :menu}, disabled: !enabled} Save
+    HAML
   end
 
   def test_static_and_dynamic_class_attribute_equivalence
     assert_render_equivalent(<<~HAML, selectors: "is-open")
       .accordion__header{ type: "button", class: selectors }
+    HAML
+  end
+
+  def test_data_attribute_equivalence
+    assert_render_equivalent(<<~HAML, controller: "simple-accordion")
+      %div{ data: { controller: controller } }
     HAML
   end
 

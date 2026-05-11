@@ -100,11 +100,28 @@ class ConverterTest < Minitest::Test
                  convert(".accordion__header{ type: \"button\", class: selectors }\n")
   end
 
-  def test_complex_dynamic_attributes_use_rails_tag_attributes
+  def test_simple_data_attributes
+    assert_equal "<div data-controller=\"simple-accordion\"></div>\n",
+                 convert("%div{ data: { controller: \"simple-accordion\" } }\n")
+  end
+
+  def test_dynamic_data_attributes
+    assert_equal "<div data-controller=\"<%= controller %>\"></div>\n",
+                 convert("%div{ data: { controller: controller } }\n")
+  end
+
+  def test_complex_dynamic_attributes_emit_without_rails_tag_attributes
     erb = convert("%button{class: [\"btn\", css_class], data: {controller: :menu}, disabled: !enabled} Save\n")
 
-    assert_includes erb, "tag.attributes(**{class: [\"btn\", css_class], data: {controller: :menu}, disabled: !enabled})"
-    refute_includes erb, ".then"
+    assert_equal "<button class=\"<%= class_names(\"btn\", css_class) %>\" data-controller=\"menu\"<%= (!enabled) ? \" disabled\" : \"\" %>>Save</button>\n",
+                 erb
+    refute_match(/tag[.]attributes/, erb)
+  end
+
+  def test_opaque_dynamic_attributes_are_unsupported
+    error = assert_raises(Haml2html::ConversionError) { convert("%div{foo_attrs}\n") }
+
+    assert_includes error.message, "inline.haml:1: dynamic attributes: only literal dynamic attribute hashes can be converted safely"
   end
 
   def test_object_ref_diagnostic

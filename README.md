@@ -79,7 +79,7 @@ end
 - Ruby output and control flow: `=`, `!=`, `- if`, `- each do`, and similar blocks.
 - Public comments and silent comments.
 - `:plain`, `:escaped`, `:javascript`, `:css`, `:erb`, and `:ruby` filters.
-- Dynamic Haml attributes through Rails `tag.attributes`.
+- Literal dynamic Haml attribute hashes, including simple `class`, `data`, `aria`, and boolean attributes.
 
 ## Limitations
 

@@ -9,6 +9,12 @@ require_relative "diagnostic"
 module Haml2html
   class Converter
     VOID_TAGS = %w[area base br col embed hr img input link meta param source track wbr].freeze
+    BOOLEAN_ATTRIBUTES = %w[
+      allowfullscreen async autofocus autoplay checked compact controls declare default defaultchecked defaultmuted
+      defaultselected defer disabled enabled formnovalidate hidden indeterminate inert ismap itemscope loop multiple
+      muted nohref nomodule noresize noshade novalidate nowrap open pauseonexit playsinline readonly required
+      reversed scoped seamless selected sortable truespeed typemustmatch visible
+    ].freeze
     SUPPORTED_FILTERS = %w[plain escaped javascript css erb ruby].freeze
 
     attr_reader :diagnostics
@@ -106,12 +112,14 @@ module Haml2html
       dynamic = dynamic_attributes_expression(value[:dynamic_attributes])
       return static_attributes(attrs) unless dynamic
 
-      if (simple_attrs = simple_dynamic_attributes(dynamic))
-        dynamic_class = simple_attrs.delete("class")
-        return "#{static_attributes(attrs, dynamic_class: dynamic_class)}#{simple_attrs.map { |name, attr_value| dynamic_attribute(name, attr_value) }.join}"
+      simple_attrs = simple_dynamic_attributes(dynamic)
+      unless simple_attrs
+        unsupported(node, "dynamic attributes", "only literal dynamic attribute hashes can be converted safely")
+        return static_attributes(attrs)
       end
 
-      "#{static_attributes(attrs)}#{dynamic_attributes(dynamic)}"
+      dynamic_class = simple_attrs.delete("class")
+      "#{static_attributes(attrs, dynamic_class: dynamic_class&.then { |attr| dynamic_attribute_value(attr) })}#{simple_attrs.values.map { |attr| dynamic_attribute(attr) }.join}"
     end
 
     def emit_script(node, indent)
@@ -195,12 +203,15 @@ module Haml2html
       end.join
     end
 
-    def dynamic_attributes(dynamic)
-      %(<%== (_haml2html_attrs = tag.attributes(**#{dynamic})).empty? ? "" : " \#{_haml2html_attrs}" %>)
-    end
+    def dynamic_attribute(attr)
+      name = attr.fetch(:name)
+      if BOOLEAN_ATTRIBUTES.include?(name)
+        return attr.fetch(:value) ? " #{name}" : "" unless attr.fetch(:dynamic)
 
-    def dynamic_attribute(name, value)
-      %( #{name}="#{value}")
+        return %(<%= (#{attr.fetch(:value)}) ? " #{name}" : "" %>)
+      end
+
+      %( #{name}="#{dynamic_attribute_value(attr)}")
     end
 
     def simple_dynamic_attributes(dynamic)
@@ -212,33 +223,147 @@ module Haml2html
       return nil unless associations.is_a?(Array)
 
       associations.each_with_object({}) do |association, attrs|
-        return nil unless association&.first == :assoc_new
+        name = dynamic_attribute_name(association)
+        return nil unless name
 
-        label = association[1]
-        return nil unless label&.first == :@label
+        if name == "data"
+          data_attrs = simple_prefixed_attributes("data", association[2], dynamic)
+          return nil unless data_attrs
 
-        value = simple_dynamic_attribute_value(association[2])
-        return nil unless value
+          attrs.merge!(data_attrs)
+        elsif name == "aria"
+          aria_attrs = simple_prefixed_attributes("aria", association[2], dynamic)
+          return nil unless aria_attrs
 
-        attrs[label[1].delete_suffix(":")] = value
+          attrs.merge!(aria_attrs)
+        else
+          value = simple_dynamic_attribute_value(name, association[2], dynamic)
+          return nil unless value
+
+          attrs[name] = value.merge(name: name)
+        end
       end
     end
 
-    def simple_dynamic_attribute_value(node)
+    def dynamic_attribute_name(association)
+      return nil unless association&.first == :assoc_new
+
+      label = association[1]
+      return nil unless label&.first == :@label
+
+      label[1].delete_suffix(":")
+    end
+
+    def simple_prefixed_attributes(prefix, node, source)
+      return nil unless node&.first == :hash
+
+      associations = node.dig(1, 1)
+      return nil unless associations.is_a?(Array)
+
+      associations.each_with_object({}) do |association, attrs|
+        name = dynamic_attribute_name(association)
+        return nil unless name
+
+        value = simple_dynamic_attribute_value(name, association[2], source)
+        return nil unless value
+        next if !value.fetch(:dynamic) && [false, nil].include?(value.fetch(:value))
+
+        attr_name = "#{prefix}-#{name.tr("_", "-")}"
+        attrs[attr_name] = value.merge(name: attr_name)
+      end
+    end
+
+    def simple_dynamic_attribute_value(name, node, source)
       case node&.first
       when :string_literal
-        escape_attr(string_literal_content(node))
-      when :vcall
-        ident = node.dig(1, 1)
-        return nil unless ident
+        string = string_literal_content(node)
+        return nil unless string
 
-        "<%= #{ident} %>"
+        { dynamic: false, value: string }
+      when :symbol_literal
+        { dynamic: false, value: symbol_literal_content(node) }
+      when :var_ref
+        if (keyword = node.dig(1, 1)) && %w[true false nil].include?(keyword)
+          return { dynamic: false, value: literal_keyword_value(keyword) }
+        end
+
+        expression = ruby_expression(node, source)
+        expression && { dynamic: true, value: expression }
+      when :vcall
+        expression = ruby_expression(node, source)
+        expression && { dynamic: true, value: expression }
+      when :array
+        return nil unless name == "class"
+
+        expression = class_names_expression(node, source)
+        expression && { dynamic: true, value: expression }
+      else
+        expression = ruby_expression(node, source)
+        expression && { dynamic: true, value: expression }
+      end
+    end
+
+    def dynamic_attribute_value(attr)
+      value = attr.fetch(:value)
+      attr.fetch(:dynamic) ? "<%= #{value} %>" : escape_attr(value.to_s)
+    end
+
+    def class_names_expression(node, source)
+      values = node[1]
+      return "class_names" if values.nil? || values.empty?
+
+      args = values.map { |value| ruby_expression(value, source) }
+      return nil if args.any?(&:nil?)
+
+      "class_names(#{args.join(", ")})"
+    end
+
+    def ruby_expression(node, source)
+      case node&.first
+      when :string_literal
+        string = string_literal_content(node)
+        string&.inspect
+      when :symbol_literal
+        ":#{symbol_literal_content(node)}"
+      when :var_ref, :vcall
+        node.dig(1, 1)
+      when :unary
+        expression = ruby_expression(node[2], source)
+        expression && "#{node[1]}#{expression}"
+      when :call
+        receiver = ruby_expression(node[1], source)
+        method = node.dig(3, 1)
+        receiver && method && "#{receiver}.#{method}"
+      when :method_add_arg
+        ruby_expression(node[1], source) if node[2]&.empty?
+      when :fcall
+        node.dig(1, 1)
       end
     end
 
     def string_literal_content(node)
-      content = node.dig(1, 1, 1)
-      content.to_s
+      content = node[1]
+      return nil unless content&.first == :string_content
+
+      parts = content[1..] || []
+      return nil unless parts.all? { |part| part.is_a?(Array) && part.first == :@tstring_content }
+
+      parts.map { |part| part[1] }.join
+    end
+
+    def symbol_literal_content(node)
+      node.dig(1, 1, 1).to_s
+    end
+
+    def literal_keyword_value(keyword)
+      case keyword
+      when "true"
+        true
+      when "false"
+        false
+      when "nil"
+        nil
+      end
     end
 
     def dynamic_attributes_expression(dynamic)
